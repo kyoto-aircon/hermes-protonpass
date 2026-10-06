@@ -1,4 +1,5 @@
 from pathlib import Path
+import sys
 
 import pytest
 
@@ -13,6 +14,19 @@ from tests._plugin import (
     _session_dir,
     find_pass_cli,
 )
+
+
+def test_login_error_scrubs_token(monkeypatch, tmp_path):
+    mod = sys.modules["protonpass_plugin"]
+
+    class _Proc:
+        returncode = 1
+        stdout = ""
+        stderr = "invalid personal access token pst_leak"
+
+    monkeypatch.setattr(mod, "run_secret_cli", lambda *a, **k: _Proc())
+    error = _login(Path("pass-cli"), "pst_leak", _session_dir(tmp_path))
+    assert error and "pst_leak" not in error
 
 
 def test_find_pass_cli_pinned(fake_pass):
@@ -59,9 +73,12 @@ def test_read_field_unknown_item_raises(fake_pass, tmp_path):
 
 @pytest.mark.parametrize("message,kind", [
     ("network connection error", ErrorKind.NETWORK),
+    ("host not found", ErrorKind.NETWORK),
     ("session expired, please log in again", ErrorKind.AUTH_EXPIRED),
     ("invalid personal access token", ErrorKind.AUTH_FAILED),
     ("unknown field password2", ErrorKind.REF_INVALID),
+    ("item not found: Nope", ErrorKind.REF_INVALID),
+    ("failed to invoke pass-cli", ErrorKind.BINARY_MISSING),
     ("something totally unexpected", ErrorKind.INTERNAL),
 ])
 def test_classify_pass_error(message, kind):

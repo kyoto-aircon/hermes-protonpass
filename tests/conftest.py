@@ -66,6 +66,10 @@ if cmd == "info":
     sys.exit(0)
 if cmd == "item" and len(argv) >= 2 and argv[1] == "view":
     def val(flag):
+        pref = flag + "="
+        for arg in argv:
+            if arg.startswith(pref):
+                return arg[len(pref):]
         return argv[argv.index(flag) + 1] if flag in argv else None
     title, field = val("--item-title"), val("--field")
     m = mode()
@@ -98,13 +102,16 @@ sys.exit(2)
 
 
 @pytest.fixture(autouse=True)
-def _clear_plugin_cache():
-    """Keep the in-process/disk cache from leaking between tests."""
+def _clear_plugin_cache(tmp_path):
+    """Clear the in-process cache (and this test's disk entry) between tests.
+
+    Deliberately never touches the real ``~/.hermes`` cache.
+    """
     from tests._plugin import clear_caches
 
-    clear_caches()
+    clear_caches(tmp_path)
     yield
-    clear_caches()
+    clear_caches(tmp_path)
 
 
 @pytest.fixture

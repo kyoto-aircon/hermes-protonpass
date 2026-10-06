@@ -8,3 +8,6 @@ venv/
 pass.log
 build/
 dist/
+# stray artifacts from `hermes plugins validate --install-deps` dep resolution
+/Python/
+/%SystemDrive%/

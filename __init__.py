@@ -26,7 +26,6 @@ Security posture (mirrors ``agent/vault_backends/protonpass.py``):
 
 from __future__ import annotations
 
-import logging
 import os
 import shutil
 import time
@@ -45,8 +44,6 @@ from agent.secret_sources.base import (
     is_valid_env_name,
     run_secret_cli,
 )
-
-logger = logging.getLogger(__name__)
 
 _DEFAULT_TOKEN_ENV = "PROTON_PASS_PERSONAL_ACCESS_TOKEN"
 _DEFAULT_VAULT = "Personal"
@@ -71,7 +68,10 @@ class _Ref(NamedTuple):
 
 # --- cache ------------------------------------------------------------------
 
-_CacheKey = Tuple[str, str]  # (token fingerprint, refs fingerprint)
+# (token fingerprint, refs fingerprint, home) — home is folded into the in-process
+# key so a HERMES_HOME switch in one long-lived gateway cannot return another
+# profile's secrets; the disk serializer omits it (the file is already home-scoped).
+_CacheKey = Tuple[str, str, str]
 
 _STORE: SecretCache[_CacheKey] = SecretCache(
     _CACHE_BASENAME, key_serializer=lambda key: f"{key[0]}|{key[1]}"
@@ -118,11 +118,11 @@ def _validate_references(
     valid: Dict[str, _Ref] = {}
     warnings: List[str] = []
     for name, ref in (references or {}).items():
-        if not is_valid_env_name(str(name)):
+        if not isinstance(name, str) or not is_valid_env_name(name):
             warnings.append(f"Skipping {name!r}: not a valid env-var name")
             continue
         try:
-            valid[str(name)] = _parse_ref(ref, default_vault)
+            valid[name] = _parse_ref(ref, default_vault)
         except ValueError as exc:
             warnings.append(f"Skipping {name!r}: {exc}")
     return valid, warnings
@@ -139,17 +139,19 @@ def _refs_fingerprint(references: Mapping[str, _Ref]) -> str:
 # --- CLI plumbing -----------------------------------------------------------
 
 # First matching rule wins (read/login errors only — a missing binary is detected
-# by find_pass_cli before any call).
+# by find_pass_cli before any call). NETWORK precedes REF_INVALID so transport text
+# like "host not found" is not mistaken for a missing item.
 _PASS_ERROR_RULES = (
     (ErrorKind.TIMEOUT, ("timed out",)),
+    (ErrorKind.NETWORK, ("network", "connection", "resolve host", "dns",
+                         "temporary failure", "host not found", "server not found")),
     (ErrorKind.AUTH_EXPIRED, ("session expired", "not logged in", "please log in",
                               "log in again", "unauthenticated")),
     (ErrorKind.AUTH_FAILED, ("unauthorized", "invalid personal access token",
                              "authentication failed", "401", "403", "permission denied")),
-    (ErrorKind.REF_INVALID, ("not found", "no item", "does not exist", "unknown field",
-                             "no such field", "invalid field")),
-    (ErrorKind.NETWORK, ("network", "connection", "resolve host", "dns",
-                         "temporary failure")),
+    (ErrorKind.BINARY_MISSING, ("failed to invoke", "not an executable")),
+    (ErrorKind.REF_INVALID, ("item not found", "no item", "does not exist",
+                             "unknown field", "no such field", "invalid field")),
 )
 
 
@@ -180,7 +182,19 @@ def _session_dir(home_path: Path) -> Path:
     try:
         directory.mkdir(parents=True, exist_ok=True)
     except OSError:
-        pass  # best effort: pass-cli can still run with its own default
+        return directory  # best effort: pass-cli can still run with its own default
+    try:
+        # pass-cli may persist session/auth material here; keep it owner-only.
+        # secure_parent_dir hardens the containing <home>/cache dir; chmod the
+        # session dir itself too (best effort — no-op where unsupported).
+        import os as _os
+
+        from hermes_constants import secure_parent_dir
+
+        secure_parent_dir(directory)
+        _os.chmod(directory, 0o700)
+    except Exception:
+        pass
     return directory
 
 
@@ -193,7 +207,7 @@ def _child_extra_env(token: str, session_dir: Path) -> Dict[str, str]:
     }
     for key in ("APPDATA", "LOCALAPPDATA", "SystemRoot", "SYSTEMROOT", "TMP",
                 "TEMP", "USERPROFILE", "HOME", "PATH"):
-        value = os.environ.get(key)
+        value = get_source_environment().get(key)
         if value:
             env.setdefault(key, value)
     if token:
@@ -227,6 +241,8 @@ def _login(
     err = (proc.stderr or proc.stdout or "").strip()
     if _ALREADY_AUTHENTICATED in err.lower():
         return None
+    if token and len(token) >= 8:
+        err = err.replace(token, "***")  # never let a CLI echo leak a real PAT
     return err or f"pass-cli login exited {proc.returncode}"
 
 
@@ -237,8 +253,8 @@ def _read_field(
     """Resolve one field. Raises ``RuntimeError`` on any CLI failure."""
     proc = _run(
         binary,
-        ["item", "view", "--vault-name", ref.vault, "--item-title", ref.title,
-         "--field", ref.field],
+        ["item", "view", f"--vault-name={ref.vault}", f"--item-title={ref.title}",
+         f"--field={ref.field}"],
         token=token, session_dir=session_dir, timeout=timeout,
     )
     if proc.returncode != 0:
@@ -322,15 +338,11 @@ class ProtonPassSource(SecretSource):
         itself on once either reference map has entries (no extra opt-in step)."""
         cfg = cfg if isinstance(cfg, dict) else {}
         flag = cfg.get("enabled")
-        if flag is False:
-            return False
-        if flag is True:
-            return True
+        if isinstance(flag, bool):
+            return flag
         gear_flag = self._gear("enabled")
-        if gear_flag is False:
-            return False
-        if gear_flag is True:
-            return True
+        if isinstance(gear_flag, bool):
+            return gear_flag
         yaml_env = cfg.get("env")
         if isinstance(yaml_env, dict) and yaml_env:
             return True
@@ -419,7 +431,7 @@ class ProtonPassSource(SecretSource):
             self._pick_value(cfg, "cache_ttl_seconds", "cache_ttl_seconds", _DEFAULT_CACHE_TTL),
             _DEFAULT_CACHE_TTL,
         )
-        cache_key: _CacheKey = (fingerprint(token), _refs_fingerprint(valid))
+        cache_key: _CacheKey = (fingerprint(token), _refs_fingerprint(valid), str(home_path))
         if cache_ttl > 0:
             cached = _STORE.lookup(cache_key, cache_ttl, home_path)
             if cached is not None:
@@ -429,11 +441,8 @@ class ProtonPassSource(SecretSource):
         session = _session_dir(home_path)
         login_error = _login(binary, token, session)
         if login_error is not None:
-            kind = _classify_pass_error(login_error)
-            if kind is ErrorKind.INTERNAL:
-                kind = ErrorKind.AUTH_FAILED
             result.error = f"pass-cli login failed: {login_error[:200]}"
-            result.error_kind = kind
+            result.error_kind = _classify_pass_error(login_error)
             return self._finish(self._stale_fallback(result, home_path, cache_key, cache_ttl))
 
         secrets, failures = self._resolve_all(
@@ -488,8 +497,14 @@ class ProtonPassSource(SecretSource):
     def _stale_fallback(
         self, result: FetchResult, home_path: Path, cache_key: _CacheKey, cache_ttl: float
     ) -> FetchResult:
-        """Serve a stale cache entry only for transport-class failures."""
-        if result.error_kind not in (ErrorKind.NETWORK, ErrorKind.TIMEOUT):
+        """Serve a stale cache entry only for transport-class failures.
+
+        Serving stale values clears ``error``/``error_kind`` (moving the cause to
+        ``warnings``) so the orchestrator — which discards any non-``ok`` result —
+        actually applies them. A disabled cache (``cache_ttl <= 0``) never falls
+        back, matching the read/write symmetry of the cache substrate.
+        """
+        if cache_ttl <= 0 or result.error_kind not in (ErrorKind.NETWORK, ErrorKind.TIMEOUT):
             return result
         try:
             # ttl=inf reads the entry regardless of age; I/O errors → no fallback.
@@ -499,8 +514,10 @@ class ProtonPassSource(SecretSource):
         if cached is not None:
             result.secrets = dict(cached.secrets)
             result.warnings.append(
-                "Served stale cached values: the Proton Pass backend was unreachable."
+                f"Served stale cached values: {result.error}"
             )
+            result.error = None
+            result.error_kind = None
         return result
 
     def _finish(self, result: FetchResult) -> FetchResult:

@@ -52,6 +52,16 @@ def test_validate_references_warns_and_keeps_valid():
     assert len(warnings) == 2
 
 
+def test_validate_references_skips_non_string_keys():
+    valid, warnings = _validate_references(
+        {None: "ppass://Google/password", 123: "ppass://Google/email",
+         "OK": "ppass://Google/username"},
+        "Personal",
+    )
+    assert set(valid) == {"OK"}
+    assert len(warnings) == 2
+
+
 def test_merged_refs_yaml_wins_per_variable():
     source = ProtonPassSource()
     source.bind_context(_Ctx({"env_map": {"A": "ppass://Gear/password",

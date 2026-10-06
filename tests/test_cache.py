@@ -56,8 +56,22 @@ def test_stale_fallback_on_network_error(fake_pass, tmp_path, monkeypatch):
     time.sleep(0.05)
     fake_pass.set_mode("network")
     stale = ProtonPassSource().fetch(cfg, tmp_path)
+    # Must be ok so the orchestrator (which drops non-ok results) applies it.
+    assert stale.ok, stale.error
     assert stale.secrets.get("PW") == "hunter2-proton"
     assert any("stale" in warning.lower() for warning in stale.warnings)
+
+
+def test_no_stale_fallback_when_cache_disabled(fake_pass, tmp_path, monkeypatch):
+    monkeypatch.setenv(TOKEN_ENV, "t")
+    warm_cfg = _cfg(fake_pass, ttl=300, PW="ppass://Google/password")
+    assert ProtonPassSource().fetch(warm_cfg, tmp_path).ok
+    fake_pass.set_mode("network")
+    failed = ProtonPassSource().fetch(
+        _cfg(fake_pass, ttl=0, PW="ppass://Google/password"), tmp_path
+    )
+    assert not failed.ok
+    assert failed.secrets == {}
 
 
 def test_no_stale_fallback_for_auth_failure(fake_pass, tmp_path, monkeypatch):
