@@ -1,0 +1,65 @@
+name: protonpass
+version: "0.1.0"
+description: >-
+  Proton Pass secret source: map environment-variable names to
+  ppass://vault/item/field references resolved through the official pass-cli at
+  startup, mirroring the bundled 1Password source. Configure everything from the
+  Plugins settings form (personal access token, vault, reference map, cache);
+  Hermes hydrates the values into the environment.
+author:
+  name: Spheraz
+homepage: https://github.com/Spheraz/hermes-protonpass
+license: MIT
+kind: backend
+manifest_version: 2
+api_version: 1
+requires_hermes: ">=0.21.5"
+tags:
+  - secrets
+  - protonpass
+  - credentials
+config_schema:
+  pat:
+    type: secret
+    env: PROTON_PASS_PERSONAL_ACCESS_TOKEN
+    label: Proton Pass personal access token
+    description: >-
+      Viewer-scoped token from Proton Pass -> Settings -> API access. Stored in
+      ~/.hermes/.env, never in config.yaml.
+  vault:
+    type: str
+    default: Personal
+    label: Default vault
+    description: Vault used by references written as ppass://title/field (no explicit vault).
+  env_map:
+    type: dict
+    default: {}
+    label: Secret references
+    description: >-
+      JSON map of ENV_VAR -> ppass://vault/item-title/field. The vault segment is
+      optional. Example {"OPENAI_API_KEY": "ppass://Personal/OpenAI/password"}.
+  cache_ttl_seconds:
+    type: int
+    default: 300
+    label: Cache TTL (seconds)
+    description: How long a complete pull is cached on disk; 0 disables caching.
+  binary_path:
+    type: str
+    default: ""
+    label: pass-cli path
+    description: Absolute path to pass-cli; empty resolves it from PATH.
+  timeout_seconds:
+    type: int
+    default: 120
+    label: Fetch timeout (seconds)
+    description: Wall-clock budget for one fetch pass.
+  override_existing:
+    type: bool
+    default: true
+    label: Override existing env vars
+    description: Resolved values overwrite values already set by .env or the shell.
+  enabled:
+    type: bool
+    default: true
+    label: Enabled
+    description: Disable to skip this source entirely.
