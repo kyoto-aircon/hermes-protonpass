@@ -1,6 +1,11 @@
 import pytest
 
-from tests._plugin import ProtonPassSource, _parse_ref, _validate_references
+from tests._plugin import (
+    TOKEN_ENV,
+    ProtonPassSource,
+    _parse_ref,
+    _validate_references,
+)
 
 
 class _Ctx:
@@ -70,6 +75,12 @@ def test_is_enabled_matrix():
     gear_off = ProtonPassSource()
     gear_off.bind_context(_Ctx({"enabled": False, "env_map": {"A": "ppass://x/y"}}))
     assert gear_off.is_enabled({}) is False
+
+
+def test_protected_vars_include_token_env():
+    source = ProtonPassSource()
+    assert source.protected_env_vars({}) == frozenset({TOKEN_ENV})
+    assert source.protected_env_vars({"pat_env": "MY_PAT"}) == frozenset({"MY_PAT"})
 
 
 def test_override_existing_precedence():

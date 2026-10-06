@@ -354,6 +354,10 @@ class ProtonPassSource(SecretSource):
                 return value.strip()
         return self.default_token_env
 
+    def protected_env_vars(self, cfg: dict) -> frozenset:
+        """The bootstrap PAT must never be overwritten by a fetched secret."""
+        return frozenset({self.token_env(cfg)})
+
     def fetch_timeout_seconds(self, cfg: dict) -> float:
         default = super().fetch_timeout_seconds({})
         raw = cfg.get("timeout_seconds") if isinstance(cfg, dict) else None
