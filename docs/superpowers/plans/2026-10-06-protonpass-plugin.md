@@ -128,4 +128,4 @@ configured and honors an explicit `enabled` flag. Resolution shells out to `pass
 - [ ] `python -m pytest -q` all green.
 - [ ] `hermes plugins validate . --install-deps` green.
 - [ ] Local install smoke test (`hermes plugins install <local path>`), confirm `hermes protonpass status`.
-- [ ] `gh repo create Spheraz/hermes-protonpass --public --source . --push` (confirm first).
+- [ ] `gh repo create epicawesomesauce/hermes-protonpass --public --source . --push` (confirm first).
