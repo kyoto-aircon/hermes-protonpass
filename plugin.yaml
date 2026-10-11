@@ -7,8 +7,8 @@ description: >-
   Plugins settings form (personal access token, vault, reference map, cache);
   Hermes hydrates the values into the environment.
 author:
-  name: epicawesomesauce
-homepage: https://github.com/epicawesomesauce/hermes-protonpass
+  name: kyoto-aircon
+homepage: https://github.com/kyoto-aircon/hermes-protonpass
 license: MIT
 kind: backend
 manifest_version: 2

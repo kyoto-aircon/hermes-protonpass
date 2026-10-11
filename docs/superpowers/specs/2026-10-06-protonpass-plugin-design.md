@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-06
 **Status:** Approved
-**Author:** epicawesomesauce
+**Author:** kyoto-aircon
 
 ## 1. Purpose
 
@@ -24,7 +24,7 @@ via `PluginContext.register_secret_source()`.
 - Resolve references through the official Proton Pass CLI, `pass-cli`.
 - Be fully configurable from the Hermes Plugins settings UI (Desktop gear form).
 - Pass the bundled `SecretSourceConformance` kit.
-- Be installable directly from GitHub (`hermes plugins install epicawesomesauce/hermes-protonpass`)
+- Be installable directly from GitHub (`hermes plugins install kyoto-aircon/hermes-protonpass`)
   and, optionally, submittable to the catalog later.
 
 **Non-goals**
@@ -165,7 +165,7 @@ YAML equivalents live under `secrets.protonpass` (`env`, `pat_env`, `vault`,
 ## 11. Distribution
 
 1. `hermes plugins validate . --install-deps` green.
-2. Publish to `github.com/epicawesomesauce/hermes-protonpass`.
-3. Direct install: `hermes plugins install epicawesomesauce/hermes-protonpass`.
+2. Publish to `github.com/kyoto-aircon/hermes-protonpass`.
+3. Direct install: `hermes plugins install kyoto-aircon/hermes-protonpass`.
 4. Optional later: catalog submission PR (pinned full SHA) to
    `NousResearch/hermes-agent` `plugin-catalog/`.

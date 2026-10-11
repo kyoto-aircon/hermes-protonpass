@@ -25,7 +25,7 @@ the bundled 1Password source, but for Proton Pass.
 ## Install
 
 ```bash
-hermes plugins install epicawesomesauce/hermes-protonpass
+hermes plugins install kyoto-aircon/hermes-protonpass
 ```
 
 Then configure it from the Hermes UI: **Capabilities → Plugins → Proton Pass → gear**.
